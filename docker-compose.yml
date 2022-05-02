@@ -1,0 +1,24 @@
+version: "3.8"
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: "my-secret-pw"
+    ports:
+      - 3306:3306
+  redis:
+    image: redis:6.2
+    ports:
+      - 6379:6379
+  mq:
+    image: rabbitmq:3-management
+    ports:
+      - 15672:15672
+      - 5672:5672
+  backend:
+    image: test:latest
+    ports:
+      - 8080:8080
+    depends_on:
+      - db
+      - mq
