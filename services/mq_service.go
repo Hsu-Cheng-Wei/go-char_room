@@ -4,6 +4,7 @@ import (
 	"chatRoom/enviroment"
 	"chatRoom/models"
 	"chatRoom/utilities"
+	"crypto/tls"
 	"github.com/streadway/amqp"
 )
 
@@ -17,7 +18,9 @@ func init() {
 }
 
 func Connect() *amqp.Connection {
-	conn, err := amqp.Dial(enviroment.MqCon)
+	conn, err := amqp.DialTLS(enviroment.MqCon, &tls.Config{
+		ServerName:
+	})
 
 	utilities.FailOnError(err, "Failed to connect to RabbitMQ")
 
