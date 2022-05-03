@@ -7,10 +7,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/kataras/iris/v12"
 	"github.com/streadway/amqp"
+	"log"
 )
 
 func StartRoom(ctx iris.Context, ws services.IWebsocketService) {
 	ch, err := services.MqConn.Channel()
+
+	log.Println("Start Room ws address %p", &ws)
 	defer ch.Close()
 
 	if err != nil {
@@ -23,7 +26,9 @@ func StartRoom(ctx iris.Context, ws services.IWebsocketService) {
 
 	json.Unmarshal([]byte(ctx.Values().Get("user").(string)), &user)
 
-	queue, err := ch.QueueDeclare(user.ID, false, true, false, false, nil)
+	log.Println("User: " + user.Name + " Start a room")
+
+	queue, err := ch.QueueDeclare(user.Name, false, true, false, false, nil)
 	if err != nil {
 		ctx.JSON(iris.Map{
 			"Message": "Fail to declare queue",
@@ -42,16 +47,17 @@ func StartRoom(ctx iris.Context, ws services.IWebsocketService) {
 		return
 	}
 
-	go func() {
+	go func(claim *models.UserClaim) {
 		for d := range messages {
 			var msg ChatMessage
 			json.Unmarshal(d.Body, &msg)
-			if msg.UserId == user.ID {
+			log.Println("Start Room Received User: " + msg.UserName + " message")
+			if msg.UserName == claim.Name {
 				continue
 			}
-			ws.WriteMessage(msg.Message)
+			ws.WriteMessage(msg.UserName + ":" + msg.Message)
 		}
-	}()
+	}(&user)
 
 	ws.Start(ctx.ResponseWriter(), ctx.Request())
 
@@ -60,8 +66,9 @@ func StartRoom(ctx iris.Context, ws services.IWebsocketService) {
 	ws.StartReceive(func(service services.IWebsocketService, bytes []byte) {
 		msg := string(bytes)
 		data, _ := json.Marshal(&ChatMessage{
-			UserId:  user.ID,
-			Message: msg,
+			UserId:   user.ID,
+			UserName: user.Name,
+			Message:  msg,
 		})
 		ch.Publish(
 			models.ChatRoomExchange,
@@ -79,6 +86,7 @@ func StartRoom(ctx iris.Context, ws services.IWebsocketService) {
 func JoinRoom(ctx iris.Context, ws services.IWebsocketService) {
 	roomId := ctx.Params().Get("roomId")
 
+	log.Println("Join Room ws address %p", &ws)
 	ch, err := services.MqConn.Channel()
 	defer ch.Close()
 
@@ -95,7 +103,9 @@ func JoinRoom(ctx iris.Context, ws services.IWebsocketService) {
 
 	json.Unmarshal([]byte(ctx.Values().Get("user").(string)), &user)
 
-	queue, err := ch.QueueDeclare(user.ID, false, true, false, false, nil)
+	log.Println("User: " + user.Name + " Join a room")
+
+	queue, err := ch.QueueDeclare(user.Name, false, true, false, false, nil)
 	if err != nil {
 		ctx.JSON(iris.Map{
 			"Message": "Fail to declare queue",
@@ -113,22 +123,24 @@ func JoinRoom(ctx iris.Context, ws services.IWebsocketService) {
 		return
 	}
 
-	go func() {
+	go func(claim *models.UserClaim) {
 		for d := range messages {
 			var msg ChatMessage
 			json.Unmarshal(d.Body, &msg)
-			if msg.UserId == user.ID {
+			log.Println("Join Room Received User: " + msg.UserName + " message")
+			if msg.UserName == user.Name {
 				continue
 			}
-			ws.WriteMessage(msg.Message)
+			ws.WriteMessage(msg.UserName + ": " + msg.Message)
 		}
-	}()
+	}(&user)
 
 	ws.StartReceive(func(service services.IWebsocketService, bytes []byte) {
 		msg := string(bytes)
 		data, _ := json.Marshal(&ChatMessage{
-			UserId:  user.ID,
-			Message: msg,
+			UserId:   user.ID,
+			UserName: user.Name,
+			Message:  msg,
 		})
 		ch.Publish(
 			models.ChatRoomExchange,
@@ -145,6 +157,7 @@ func JoinRoom(ctx iris.Context, ws services.IWebsocketService) {
 }
 
 type ChatMessage struct {
-	UserId  string
-	Message string
+	UserId   string
+	UserName string
+	Message  string
 }
