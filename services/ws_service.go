@@ -12,7 +12,7 @@ import (
 type IWebsocketService interface {
 	IsStart() bool
 	Start(write context.ResponseWriter, request *http.Request) (*websocket.Conn, error)
-	StartReceive(callBack func(IWebsocketService, []byte))
+	StartReceive() <-chan []byte
 	WriteMessage(message string) error
 	Close()
 }
@@ -40,23 +40,34 @@ func (w *WebsocketService) Start(write context.ResponseWriter, request *http.Req
 		}
 		return nil, err
 	}
+	ws.SetCloseHandler(func(code int, text string) error {
+		log.Println("ws close...")
+
+		return errors.New("ws close...")
+	})
+
 	w.Conn = ws
 
 	return ws, nil
 }
 
-func (w *WebsocketService) StartReceive(callback func(IWebsocketService, []byte)) {
+func (w *WebsocketService) StartReceive() <-chan []byte {
 	defer w.Close()
-	for {
-		_, body, err := w.Conn.ReadMessage()
-		utilities.FailOnError(err, "Fatal on websocket received")
 
-		if err != nil {
-			break
+	message := make(chan []byte)
+
+	go func() {
+		for {
+			_, body, err := w.Conn.ReadMessage()
+			utilities.FailOnError(err, "Fatal on websocket received")
+
+			if err != nil {
+				break
+			}
+			message <- body
 		}
-
-		go callback(w, body)
-	}
+	}()
+	return message
 }
 
 func (w *WebsocketService) WriteMessage(message string) error {

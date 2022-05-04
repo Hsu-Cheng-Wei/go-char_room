@@ -8,6 +8,7 @@ import (
 	"github.com/kataras/iris/v12"
 	"github.com/streadway/amqp"
 	"log"
+	"sync"
 )
 
 func StartRoom(ctx iris.Context, ws services.IWebsocketService) {
@@ -63,24 +64,22 @@ func StartRoom(ctx iris.Context, ws services.IWebsocketService) {
 
 	ws.WriteMessage(key)
 
-	ws.StartReceive(func(service services.IWebsocketService, bytes []byte) {
-		msg := string(bytes)
-		data, _ := json.Marshal(&ChatMessage{
-			UserId:   user.ID,
-			UserName: user.Name,
-			Message:  msg,
-		})
-		ch.Publish(
-			models.ChatRoomExchange,
-			user.ID+"."+key,
-			false,
-			false,
-			amqp.Publishing{
-				ContentType: "application/json",
-				Body:        data,
-			},
-		)
-	})
+	wsCh := ws.StartReceive()
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for body := range wsCh {
+			msg := string(body)
+			handlerWsMessage(ch, user, msg, key)
+		}
+	}()
+
+	wg.Wait()
+
+	log.Println("Exist start room")
 }
 
 func JoinRoom(ctx iris.Context, ws services.IWebsocketService) {
@@ -135,25 +134,40 @@ func JoinRoom(ctx iris.Context, ws services.IWebsocketService) {
 		}
 	}(&user)
 
-	ws.StartReceive(func(service services.IWebsocketService, bytes []byte) {
-		msg := string(bytes)
-		data, _ := json.Marshal(&ChatMessage{
-			UserId:   user.ID,
-			UserName: user.Name,
-			Message:  msg,
-		})
-		ch.Publish(
-			models.ChatRoomExchange,
-			user.ID+"."+roomId,
-			false,
-			false,
-			amqp.Publishing{
-				ContentType: "application/json",
-				Body:        data,
-			},
-		)
-	})
+	wsCh := ws.StartReceive()
 
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for body := range wsCh {
+			msg := string(body)
+			handlerWsMessage(ch, user, msg, roomId)
+		}
+	}()
+
+	wg.Wait()
+
+	log.Println("Exist join room")
+}
+
+func handlerWsMessage(ch *amqp.Channel, user models.UserClaim, msg string, key string) {
+	data, _ := json.Marshal(&ChatMessage{
+		UserId:   user.ID,
+		UserName: user.Name,
+		Message:  msg,
+	})
+	ch.Publish(
+		models.ChatRoomExchange,
+		user.ID+"."+key,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        data,
+		},
+	)
 }
 
 type ChatMessage struct {
