@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"chatRoom/domain"
+	"chatRoom/models"
 	"chatRoom/services"
 	"errors"
 	"github.com/google/uuid"
@@ -37,13 +38,26 @@ func (u *UserRepository) GetAll() []domain.User {
 }
 
 func (u *UserRepository) SignIn(userInfo services.UserSignIn) (string, error) {
-	user := domain.User{
-		Name: userInfo.Name,
-	}
-	u.Db.Find(&user)
+	ch := make(chan models.OrmFindResult)
 
+	go func() {
+		var user domain.User
+		err := u.Db.Where("name=?", userInfo.Name).Find(&user).Error
+		ch <- models.OrmFindResult{
+			Instance: user,
+			Error:    err,
+		}
+	}()
+
+	result := <-ch
+
+	if result.Error != nil {
+		return "", result.Error
+	}
+
+	user := result.Instance.(domain.User)
 	if user.Password != userInfo.Password {
-		return "", errors.New("Password does not correct")
+		return "", errors.New("password is not equal")
 	}
 
 	return user.ID, nil
