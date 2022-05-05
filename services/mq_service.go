@@ -18,17 +18,16 @@ func init() {
 }
 
 func Connect() *amqp.Connection {
-	//conn, err := amqp.Dial(enviroment.MqCon)
-
-	conn, err := amqp.DialTLS(enviroment.MqCon, &tls.Config{
-		ServerName: enviroment.MqServer,
-	})
-
-	/*
-		conn, err := amqp.DialTLS(enviroment.MqCon, &tls.Config{
-			ServerName:
-		})*/
-
+	var conn *amqp.Connection
+	var err error
+	if enviroment.MqUseSsl {
+		conn, err = amqp.DialTLS(enviroment.MqCon, &tls.Config{
+			ServerName: enviroment.MqServer,
+		})
+	} else {
+		conn, err = amqp.Dial(enviroment.MqCon)
+	}
+	
 	utilities.FailOnError(err, "Failed to connect to RabbitMQ")
 
 	return conn
